@@ -1,40 +1,25 @@
-import { useEffect, useState } from 'react'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import ProtectedRoute from './components/ProtectedRoute'
+import { useAuth } from './context/AuthContext'
+import Dashboard from './pages/Dashboard'
+import Login from './pages/Login'
+import Register from './pages/Register'
 
-function App() {
-  const [health, setHealth] = useState(null)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    fetch('http://localhost:5001/api/health')
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error('Health check failed')
-        }
-
-        return response.json()
-      })
-      .then((data) => {
-        setHealth(data)
-      })
-      .catch((error) => {
-        setError(error.message)
-      })
-  }, [])
+function AppRoutes() {
+  const { isAuthenticated, loading } = useAuth()
 
   return (
-    <main className="app-shell">
-      <h1>PayWise</h1>
-
-      {health && (
-        <div>
-          <p>Server: {health.server}</p>
-          <p>Database: {health.database}</p>
-        </div>
-      )}
-
-      {error && <p>Backend connection failed: {error}</p>}
-    </main>
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="*" element={loading ? <main className="page-loader">Loading...</main> : <Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
+    </Routes>
   )
+}
+
+function App() {
+  return <BrowserRouter><AppRoutes /></BrowserRouter>
 }
 
 export default App
