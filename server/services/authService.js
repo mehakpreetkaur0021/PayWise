@@ -20,22 +20,35 @@ function toSafeUser(user) {
 }
 
 async function registerUser({ name, email, password }) {
-  const [existingUsers] = await pool.execute(
-    'SELECT id FROM users WHERE email = ?',
-    [email]
-  )
-
-  if (existingUsers.length > 0) {
-    throw createServiceError('An account with this email already exists', 409)
-  }
-
-  const passwordHash = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS)
+  const connection = await pool.getConnection()
+  let transactionStarted = false
 
   try {
-    const [result] = await pool.execute(
+    await connection.beginTransaction()
+    transactionStarted = true
+
+    const [existingUsers] = await connection.execute(
+      'SELECT id FROM users WHERE email = ?',
+      [email]
+    )
+
+    if (existingUsers.length > 0) {
+      throw createServiceError('An account with this email already exists', 409)
+    }
+
+    const passwordHash = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS)
+    const [result] = await connection.execute(
       'INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)',
       [name, email, passwordHash]
     )
+
+    await connection.execute(
+      'INSERT INTO wallets (user_id, balance) VALUES (?, ?)',
+      [result.insertId, 0]
+    )
+
+    await connection.commit()
+    transactionStarted = false
 
     return {
       id: result.insertId,
@@ -44,11 +57,21 @@ async function registerUser({ name, email, password }) {
       role: 'student',
     }
   } catch (error) {
+    if (transactionStarted) {
+      try {
+        await connection.rollback()
+      } catch (rollbackError) {
+        console.error('Registration transaction rollback failed:', rollbackError.message)
+      }
+    }
+
     if (error.code === 'ER_DUP_ENTRY') {
       throw createServiceError('An account with this email already exists', 409)
     }
 
     throw error
+  } finally {
+    connection.release()
   }
 }
 

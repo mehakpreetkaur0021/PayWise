@@ -3,6 +3,7 @@ const express = require('express')
 
 const healthRoutes = require('./routes/healthRoutes')
 const authRoutes = require('./routes/authRoutes')
+const walletRoutes = require('./routes/walletRoutes')
 const { apiNotFound, errorHandler } = require('./middleware/errorHandler')
 
 const app = express()
@@ -12,6 +13,7 @@ app.use(express.json())
 
 app.use('/api/health', healthRoutes)
 app.use('/api/auth', authRoutes)
+app.use('/api/wallet', walletRoutes)
 
 app.use('/api', apiNotFound)
 app.use(errorHandler)
