@@ -4,8 +4,15 @@ const test = require('node:test')
 const { pool } = require('../config/db')
 const { transferBetweenWallets } = require('../services/walletService')
 
-function createConnection({ existingTransaction, senderBalance = 50000, recipient, failInsert = false }) {
+function createConnection({
+  existingTransaction,
+  senderBalance = 50000,
+  receiverBalance = 1200,
+  recipient,
+  failInsert = false,
+}) {
   const calls = []
+  const balances = new Map([[9, senderBalance], [3, receiverBalance]])
   let committed = false
   let rolledBack = false
   let released = false
@@ -33,7 +40,7 @@ function createConnection({ existingTransaction, senderBalance = 50000, recipien
         return [existingTransaction ? [existingTransaction] : []]
       }
       if (compactSql.includes('FROM wallets') && compactSql.includes('WHERE user_id = ?')) {
-        return [[{ id: 9, user_id: 1, balance: senderBalance }]]
+        return [[{ id: 9, user_id: 1, balance: balances.get(9) }]]
       }
       if (compactSql.includes('FROM users')) {
         return [recipient ? [recipient] : []]
@@ -43,13 +50,15 @@ function createConnection({ existingTransaction, senderBalance = 50000, recipien
         return [[{
           id: walletId,
           user_id: walletId === 9 ? 1 : 2,
-          balance: walletId === 9 ? senderBalance : 1200,
+          balance: balances.get(walletId),
         }]]
       }
       if (compactSql.startsWith('UPDATE wallets SET balance = balance -')) {
+        balances.set(params[1], balances.get(params[1]) - params[0])
         return [{ affectedRows: 1 }]
       }
       if (compactSql.startsWith('UPDATE wallets SET balance = balance +')) {
+        balances.set(params[1], balances.get(params[1]) + params[0])
         return [{ affectedRows: 1 }]
       }
       if (compactSql.startsWith('INSERT INTO transactions')) {
@@ -68,7 +77,7 @@ function createConnection({ existingTransaction, senderBalance = 50000, recipien
         }]]
       }
       if (compactSql.includes('FROM wallets') && compactSql.includes('WHERE id = ?')) {
-        return [[{ id: 9, user_id: 1, balance: senderBalance - 1000 }]]
+        return [[{ id: 9, user_id: 1, balance: balances.get(9) }]]
       }
       throw new Error(`Unexpected SQL: ${compactSql}`)
     },
@@ -80,6 +89,7 @@ function createConnection({ existingTransaction, senderBalance = 50000, recipien
     get committed() { return committed },
     get rolledBack() { return rolledBack },
     get released() { return released },
+    getWalletBalance(walletId) { return balances.get(walletId) },
   }
 }
 
@@ -88,7 +98,9 @@ async function withMockedPool(mock, callback) {
   const originalExecute = pool.execute
   pool.getConnection = async () => mock.connection
   pool.execute = async (sql) => {
-    if (sql.includes('WHERE user_id = ?')) return [[{ id: 9, user_id: 1, balance: 49000 }]]
+    if (sql.includes('WHERE user_id = ?')) {
+      return [[{ id: 9, user_id: 1, balance: mock.getWalletBalance(9) }]]
+    }
     throw new Error(`Unexpected pool SQL: ${sql}`)
   }
 
@@ -120,6 +132,26 @@ test('transfers atomically and locks wallets in ascending ID order', async () =>
     .filter((call) => typeof call === 'object' && call.sql.includes('WHERE id = ? FOR UPDATE'))
     .map((call) => call.params[0])
   assert.deepEqual(lockIds, [3, 9])
+})
+
+test('conserves total money across a successful transfer', async () => {
+  const mock = createConnection({
+    senderBalance: 75000,
+    receiverBalance: 22500,
+    recipient: { user_id: 2, wallet_id: 3 },
+  })
+  const totalBefore = mock.getWalletBalance(9) + mock.getWalletBalance(3)
+
+  const result = await withMockedPool(mock, () => transferBetweenWallets({
+    senderUserId: 1,
+    recipientEmail: 'recipient@example.com',
+    amount: 12500,
+    idempotencyKey: 'transfer-conservation',
+  }))
+  const totalAfter = mock.getWalletBalance(9) + mock.getWalletBalance(3)
+
+  assert.equal(result.transaction.status, 'SUCCESS')
+  assert.equal(totalAfter, totalBefore)
 })
 
 test('rejects insufficient funds without balance updates and rolls back', async () => {
