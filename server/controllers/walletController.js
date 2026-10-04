@@ -1,10 +1,12 @@
 const {
   getWalletByUserId,
   depositToWallet,
+  transferBetweenWallets,
   getWalletTransactions,
 } = require('../services/walletService')
 
 const MAX_IDEMPOTENCY_KEY_LENGTH = 100
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function toWalletResponse(wallet) {
   return {
@@ -103,6 +105,56 @@ async function deposit(req, res) {
   }
 }
 
+async function transfer(req, res) {
+  const body = req.body || {}
+  const recipientEmail = typeof body.recipientEmail === 'string'
+    ? body.recipientEmail.trim().toLowerCase()
+    : ''
+  const { amount } = body
+  const idempotencyKey = typeof body.idempotencyKey === 'string'
+    ? body.idempotencyKey.trim()
+    : ''
+
+  if (!recipientEmail || !emailPattern.test(recipientEmail)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Please provide a valid recipient email address',
+    })
+  }
+
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Amount must be a positive integer amount in paise',
+    })
+  }
+
+  if (!idempotencyKey || idempotencyKey.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
+    return res.status(400).json({
+      success: false,
+      message: 'A valid idempotency key is required',
+    })
+  }
+
+  try {
+    const result = await transferBetweenWallets({
+      senderUserId: req.user.userId,
+      recipientEmail,
+      amount,
+      idempotencyKey,
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: result.idempotent ? 'Transfer already processed' : 'Transfer successful',
+      wallet: toWalletResponse(result.wallet),
+      transaction: toTransactionResponse(result.transaction),
+    })
+  } catch (error) {
+    return sendWalletError(error, res)
+  }
+}
+
 async function getTransactions(req, res) {
   try {
     const transactions = await getWalletTransactions(req.user.userId)
@@ -116,4 +168,4 @@ async function getTransactions(req, res) {
   }
 }
 
-module.exports = { getWallet, deposit, getTransactions }
+module.exports = { getWallet, deposit, transfer, getTransactions }
