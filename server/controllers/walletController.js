@@ -1,9 +1,6 @@
-const {
-  getWalletByUserId,
-  depositToWallet,
-  transferBetweenWallets,
-  getWalletTransactions,
-} = require('../services/walletService')
+const walletService = require('../services/walletService')
+const securityService = require('../services/securityService')
+const { isValidPin } = require('./securityController')
 
 const MAX_IDEMPOTENCY_KEY_LENGTH = 100
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -48,7 +45,7 @@ function sendWalletError(error, res) {
 
 async function getWallet(req, res) {
   try {
-    const wallet = await getWalletByUserId(req.user.userId)
+    const wallet = await walletService.getWalletByUserId(req.user.userId)
 
     if (!wallet) {
       return res.status(404).json({
@@ -88,7 +85,7 @@ async function deposit(req, res) {
   }
 
   try {
-    const result = await depositToWallet({
+    const result = await walletService.depositToWallet({
       userId: req.user.userId,
       amount,
       idempotencyKey,
@@ -111,6 +108,7 @@ async function transfer(req, res) {
     ? body.recipientEmail.trim().toLowerCase()
     : ''
   const { amount } = body
+  const { pin } = body
   const idempotencyKey = typeof body.idempotencyKey === 'string'
     ? body.idempotencyKey.trim()
     : ''
@@ -136,8 +134,17 @@ async function transfer(req, res) {
     })
   }
 
+  if (!isValidPin(pin)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Transaction PIN must be exactly 4 digits',
+    })
+  }
+
   try {
-    const result = await transferBetweenWallets({
+    await securityService.verifyTransactionPin({ userId: req.user.userId, pin })
+
+    const result = await walletService.transferBetweenWallets({
       senderUserId: req.user.userId,
       recipientEmail,
       amount,
@@ -157,7 +164,7 @@ async function transfer(req, res) {
 
 async function getTransactions(req, res) {
   try {
-    const transactions = await getWalletTransactions(req.user.userId)
+    const transactions = await walletService.getWalletTransactions(req.user.userId)
 
     return res.status(200).json({
       success: true,

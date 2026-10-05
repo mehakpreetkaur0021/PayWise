@@ -20,9 +20,9 @@ function createResponse() {
 
 test('validates recipient email, amount, and idempotency key before calling the service', async () => {
   const cases = [
-    [{ recipientEmail: 'not-an-email', amount: 1000, idempotencyKey: 'key-1' }, 'Please provide a valid recipient email address'],
-    [{ recipientEmail: 'recipient@example.com', amount: 0, idempotencyKey: 'key-2' }, 'Amount must be a positive integer amount in paise'],
-    [{ recipientEmail: 'recipient@example.com', amount: 1000 }, 'A valid idempotency key is required'],
+    [{ recipientEmail: 'not-an-email', amount: 1000, idempotencyKey: 'key-1', pin: '4821' }, 'Please provide a valid recipient email address'],
+    [{ recipientEmail: 'recipient@example.com', amount: 0, idempotencyKey: 'key-2', pin: '4821' }, 'Amount must be a positive integer amount in paise'],
+    [{ recipientEmail: 'recipient@example.com', amount: 1000, pin: '4821' }, 'A valid idempotency key is required'],
   ]
 
   for (const [body, message] of cases) {

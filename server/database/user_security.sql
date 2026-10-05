@@ -1,0 +1,11 @@
+CREATE TABLE user_security (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL UNIQUE,
+    pin_hash VARCHAR(255) NOT NULL,
+    failed_attempts INT NOT NULL DEFAULT 0,
+    locked_until DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
