@@ -20,7 +20,10 @@ function Dashboard() {
           <div><dt>Role</dt><dd>{currentUser.role}</dd></div>
           <div><dt>Authentication status</dt><dd className="authenticated">Authenticated</dd></div>
         </dl>
-        <button type="button" className="secondary-button" onClick={handleLogout}>Logout</button>
+        <div className="dashboard-actions">
+          <button type="button" onClick={() => navigate('/transactions')}>View Transactions</button>
+          <button type="button" className="secondary-button" onClick={handleLogout}>Logout</button>
+        </div>
       </section>
     </main>
   )

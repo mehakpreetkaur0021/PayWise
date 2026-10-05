@@ -4,6 +4,7 @@ import { useAuth } from './context/AuthContext'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import Transactions from './pages/Transactions'
 
 function AppRoutes() {
   const { isAuthenticated, loading } = useAuth()
@@ -13,6 +14,7 @@ function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
       <Route path="*" element={loading ? <main className="page-loader">Loading...</main> : <Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
     </Routes>
   )

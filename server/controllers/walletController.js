@@ -143,6 +143,11 @@ async function transfer(req, res) {
 
   try {
     await securityService.verifyTransactionPin({ userId: req.user.userId, pin })
+    await securityService.checkDailyTransferLimit({
+      userId: req.user.userId,
+      amount,
+      idempotencyKey,
+    })
 
     const result = await walletService.transferBetweenWallets({
       senderUserId: req.user.userId,
