@@ -154,6 +154,42 @@ test('conserves total money across a successful transfer', async () => {
   assert.equal(totalAfter, totalBefore)
 })
 
+test('stores a suspicious transfer but still completes it normally', async () => {
+  const mock = createConnection({
+    senderBalance: 3000000,
+    recipient: { user_id: 2, wallet_id: 3 },
+  })
+
+  const result = await withMockedPool(mock, () => transferBetweenWallets({
+    senderUserId: 1,
+    recipientEmail: 'recipient@example.com',
+    amount: 2500000,
+    idempotencyKey: 'suspicious-transfer',
+    suspicion: { suspicious: true, reason: 'Large transaction amount' },
+  }))
+
+  const insert = mock.calls.find((call) => typeof call === 'object' && call.sql.startsWith('INSERT INTO transactions'))
+  assert.equal(result.idempotent, false)
+  assert.equal(mock.committed, true)
+  assert.equal(insert.params[5], true)
+  assert.equal(insert.params[6], 'Large transaction amount')
+})
+
+test('stores false for a normal transfer', async () => {
+  const mock = createConnection({ recipient: { user_id: 2, wallet_id: 3 } })
+
+  await withMockedPool(mock, () => transferBetweenWallets({
+    senderUserId: 1,
+    recipientEmail: 'recipient@example.com',
+    amount: 1000,
+    idempotencyKey: 'normal-transfer',
+  }))
+
+  const insert = mock.calls.find((call) => typeof call === 'object' && call.sql.startsWith('INSERT INTO transactions'))
+  assert.equal(insert.params[5], false)
+  assert.equal(insert.params[6], null)
+})
+
 test('rejects insufficient funds without balance updates and rolls back', async () => {
   const mock = createConnection({ senderBalance: 999, recipient: { user_id: 2, wallet_id: 3 } })
 

@@ -1,4 +1,5 @@
 const { pool } = require('../config/db')
+const { emitPaymentReceived } = require('../socket')
 
 function createServiceError(message, statusCode) {
   const error = new Error(message)
@@ -21,7 +22,7 @@ async function getWalletByUserId(userId) {
 async function getTransactionByIdempotencyKey(connection, idempotencyKey) {
   const [transactions] = await connection.execute(
     `SELECT id, type, sender_wallet_id, receiver_wallet_id, amount, status,
-            idempotency_key, created_at
+            suspicious, suspicious_reason, idempotency_key, created_at
      FROM transactions
      WHERE idempotency_key = ?
      LIMIT 1`,
@@ -34,7 +35,7 @@ async function getTransactionByIdempotencyKey(connection, idempotencyKey) {
 async function getTransactionByIdempotencyKeyForUpdate(connection, idempotencyKey) {
   const [transactions] = await connection.execute(
     `SELECT id, type, sender_wallet_id, receiver_wallet_id, amount, status,
-            idempotency_key, created_at
+            suspicious, suspicious_reason, idempotency_key, created_at
      FROM transactions
      WHERE idempotency_key = ?
      LIMIT 1
@@ -104,7 +105,7 @@ async function depositToWallet({ userId, amount, idempotencyKey }) {
 
     const [transactions] = await connection.execute(
       `SELECT id, type, sender_wallet_id, receiver_wallet_id, amount, status,
-              idempotency_key, created_at
+              suspicious, suspicious_reason, idempotency_key, created_at
        FROM transactions
        WHERE id = ?`,
       [transactionResult.insertId]
@@ -152,7 +153,13 @@ async function depositToWallet({ userId, amount, idempotencyKey }) {
   }
 }
 
-async function transferBetweenWallets({ senderUserId, recipientEmail, amount, idempotencyKey }) {
+async function transferBetweenWallets({
+  senderUserId,
+  recipientEmail,
+  amount,
+  idempotencyKey,
+  suspicion = { suspicious: false, reason: null },
+}) {
   const connection = await pool.getConnection()
   let transactionStarted = false
 
@@ -254,21 +261,23 @@ async function transferBetweenWallets({ senderUserId, recipientEmail, amount, id
 
     const [transactionResult] = await connection.execute(
       `INSERT INTO transactions
-       (type, sender_wallet_id, receiver_wallet_id, amount, status, idempotency_key)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       (type, sender_wallet_id, receiver_wallet_id, amount, status, suspicious, suspicious_reason, idempotency_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         'TRANSFER',
         lockedSenderWallet.id,
         lockedRecipientWallet.id,
         amount,
         'SUCCESS',
+        suspicion.suspicious,
+        suspicion.reason,
         idempotencyKey,
       ]
     )
 
     const [transactions] = await connection.execute(
       `SELECT id, type, sender_wallet_id, receiver_wallet_id, amount, status,
-              idempotency_key, created_at
+              suspicious, suspicious_reason, idempotency_key, created_at
        FROM transactions
        WHERE id = ?`,
       [transactionResult.insertId]
@@ -283,6 +292,14 @@ async function transferBetweenWallets({ senderUserId, recipientEmail, amount, id
 
     await connection.commit()
     transactionStarted = false
+
+    // The transfer is now permanent in MySQL. Socket.IO only informs the
+    // receiver; it never changes the financial transaction.
+    emitPaymentReceived({
+      receiverUserId: recipient.user_id,
+      transactionId: transactions[0].id,
+      amount: transactions[0].amount,
+    })
 
     return {
       wallet: updatedWallets[0],
@@ -330,7 +347,7 @@ async function getWalletTransactions(userId) {
 
   const [transactions] = await pool.execute(
     `SELECT id, type, sender_wallet_id, receiver_wallet_id, amount, status,
-            idempotency_key, created_at
+            suspicious, suspicious_reason, idempotency_key, created_at
      FROM transactions
      WHERE sender_wallet_id = ? OR receiver_wallet_id = ?
      ORDER BY created_at DESC, id DESC`,

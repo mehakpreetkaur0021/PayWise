@@ -26,6 +26,15 @@ async function setTransactionPin({ userId, pin }) {
   )
 }
 
+async function hasTransactionPin(userId) {
+  const [securityRecords] = await pool.execute(
+    'SELECT id FROM user_security WHERE user_id = ? LIMIT 1',
+    [userId]
+  )
+
+  return securityRecords.length > 0
+}
+
 async function verifyTransactionPin({ userId, pin }) {
   const [securityRecords] = await pool.execute(
     `SELECT pin_hash, failed_attempts, locked_until
@@ -111,4 +120,4 @@ async function checkDailyTransferLimit({ userId, amount, idempotencyKey }) {
   }
 }
 
-module.exports = { setTransactionPin, verifyTransactionPin, checkDailyTransferLimit }
+module.exports = { setTransactionPin, hasTransactionPin, verifyTransactionPin, checkDailyTransferLimit }

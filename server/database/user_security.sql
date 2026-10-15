@@ -1,4 +1,4 @@
-CREATE TABLE user_security (
+CREATE TABLE IF NOT EXISTS user_security (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL UNIQUE,
     pin_hash VARCHAR(255) NOT NULL,

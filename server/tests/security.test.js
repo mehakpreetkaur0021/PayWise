@@ -5,7 +5,8 @@ const bcrypt = require('bcrypt')
 const { pool } = require('../config/db')
 const securityService = require('../services/securityService')
 const walletService = require('../services/walletService')
-const { setPin } = require('../controllers/securityController')
+const fraudService = require('../services/fraudService')
+const { setPin, getSecurityStatus } = require('../controllers/securityController')
 const { transfer } = require('../controllers/walletController')
 
 function createResponse() {
@@ -48,6 +49,25 @@ test('creates and replaces a transaction PIN as a bcrypt hash', async () => {
     assert.equal(await bcrypt.compare('1234', replacement.pin_hash), true)
     assert.equal(replacement.failed_attempts, 0)
     assert.equal(replacement.locked_until, null)
+  } finally {
+    pool.execute = originalExecute
+  }
+})
+
+test('reports whether the authenticated user has a transaction PIN without exposing security details', async () => {
+  const originalExecute = pool.execute
+
+  try {
+    pool.execute = async () => [[]]
+    const noPinResponse = createResponse()
+    await getSecurityStatus({ user: { userId: 7 } }, noPinResponse)
+    assert.deepEqual(noPinResponse.body, { success: true, hasTransactionPin: false })
+
+    pool.execute = async () => [[{ id: 12 }]]
+    const hasPinResponse = createResponse()
+    await getSecurityStatus({ user: { userId: 7 } }, hasPinResponse)
+    assert.deepEqual(hasPinResponse.body, { success: true, hasTransactionPin: true })
+    assert.equal(JSON.stringify(hasPinResponse.body).includes('pin_hash'), false)
   } finally {
     pool.execute = originalExecute
   }
@@ -204,6 +224,7 @@ test('verifies a correct PIN before continuing a transfer using the JWT user ID'
   const originalVerifyTransactionPin = securityService.verifyTransactionPin
   const originalCheckDailyTransferLimit = securityService.checkDailyTransferLimit
   const originalTransferBetweenWallets = walletService.transferBetweenWallets
+  const originalEvaluateTransfer = fraudService.evaluateTransfer
   let verifiedArguments
   let dailyLimitArguments
   let transferredArguments
@@ -214,6 +235,10 @@ test('verifies a correct PIN before continuing a transfer using the JWT user ID'
   securityService.checkDailyTransferLimit = async (arguments_) => {
     dailyLimitArguments = arguments_
   }
+  fraudService.evaluateTransfer = async () => ({
+    suspicious: true,
+    reason: 'Large transaction amount',
+  })
   walletService.transferBetweenWallets = async (arguments_) => {
     transferredArguments = arguments_
     return {
@@ -226,6 +251,8 @@ test('verifies a correct PIN before continuing a transfer using the JWT user ID'
         receiver_wallet_id: 3,
         amount: 1000,
         status: 'SUCCESS',
+        suspicious: true,
+        suspicious_reason: 'Large transaction amount',
         idempotency_key: 'transfer-1',
         created_at: null,
       },
@@ -252,11 +279,18 @@ test('verifies a correct PIN before continuing a transfer using the JWT user ID'
       idempotencyKey: 'transfer-1',
     })
     assert.equal(transferredArguments.senderUserId, 7)
+    assert.deepEqual(transferredArguments.suspicion, {
+      suspicious: true,
+      reason: 'Large transaction amount',
+    })
     assert.equal(response.statusCode, 200)
+    assert.equal(response.body.transaction.suspicious, true)
+    assert.equal(response.body.transaction.suspiciousReason, 'Large transaction amount')
   } finally {
     securityService.verifyTransactionPin = originalVerifyTransactionPin
     securityService.checkDailyTransferLimit = originalCheckDailyTransferLimit
     walletService.transferBetweenWallets = originalTransferBetweenWallets
+    fraudService.evaluateTransfer = originalEvaluateTransfer
   }
 })
 

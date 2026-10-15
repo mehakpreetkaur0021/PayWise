@@ -2,8 +2,10 @@ import axios from 'axios'
 
 const TOKEN_STORAGE_KEY = 'paywise_token'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'
+
 const client = axios.create({
-  baseURL: 'http://localhost:5001/api',
+  baseURL: API_BASE_URL,
 })
 
 client.interceptors.request.use((config) => {
@@ -16,5 +18,5 @@ client.interceptors.request.use((config) => {
   return config
 })
 
-export { TOKEN_STORAGE_KEY }
+export { API_BASE_URL, TOKEN_STORAGE_KEY }
 export default client

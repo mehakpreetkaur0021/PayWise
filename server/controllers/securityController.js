@@ -32,4 +32,21 @@ async function setPin(req, res) {
   }
 }
 
-module.exports = { setPin, isValidPin }
+async function getSecurityStatus(req, res) {
+  try {
+    const hasTransactionPin = await securityService.hasTransactionPin(req.user.userId)
+
+    return res.status(200).json({
+      success: true,
+      hasTransactionPin,
+    })
+  } catch (error) {
+    console.error('Security status request failed:', error.message)
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+    })
+  }
+}
+
+module.exports = { setPin, getSecurityStatus, isValidPin }

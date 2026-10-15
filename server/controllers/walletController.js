@@ -1,5 +1,6 @@
 const walletService = require('../services/walletService')
 const securityService = require('../services/securityService')
+const fraudService = require('../services/fraudService')
 const { isValidPin } = require('./securityController')
 
 const MAX_IDEMPOTENCY_KEY_LENGTH = 100
@@ -23,6 +24,8 @@ function toTransactionResponse(transaction) {
     receiverWalletId: transaction.receiver_wallet_id,
     amount: transaction.amount,
     status: transaction.status,
+    suspicious: Boolean(transaction.suspicious),
+    suspiciousReason: transaction.suspicious_reason || null,
     idempotencyKey: transaction.idempotency_key,
     createdAt: transaction.created_at,
   }
@@ -148,12 +151,17 @@ async function transfer(req, res) {
       amount,
       idempotencyKey,
     })
+    const suspicion = await fraudService.evaluateTransfer({
+      userId: req.user.userId,
+      amount,
+    })
 
     const result = await walletService.transferBetweenWallets({
       senderUserId: req.user.userId,
       recipientEmail,
       amount,
       idempotencyKey,
+      suspicion,
     })
 
     return res.status(200).json({
