@@ -27,3 +27,11 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Local AI dataset and reproducible preprocessing outputs
+/ai-service/data/*.csv
+/ai-service/artifacts/
+/ai-service/.venv/
+# Python cache files
+__pycache__/
+*.py[cod]

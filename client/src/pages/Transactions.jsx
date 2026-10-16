@@ -7,6 +7,12 @@ function getTransactionDetails(transaction, walletId) {
   return transaction.senderWalletId === walletId ? { label: 'Sent money', sign: '-' } : { label: 'Received money', sign: '+' }
 }
 
+function getAiStatus(transaction) {
+  if (transaction.aiAnomalyStatus === 'SUSPICIOUS') return 'AI: Unusual pattern detected (experimental)'
+  if (transaction.aiAnomalyStatus === 'NORMAL') return 'AI: No unusual pattern detected (experimental)'
+  return 'AI: Unavailable (experimental)'
+}
+
 function Transactions() {
   const [transactions, setTransactions] = useState([])
   const [walletId, setWalletId] = useState(null)
@@ -58,7 +64,7 @@ function Transactions() {
           {!loading && !error && transactions.length > 0 && <ul className="transaction-list">
             {transactions.map((transaction) => {
               const details = getTransactionDetails(transaction, walletId)
-              return <li key={transaction.id} className="transaction-item"><div className="transaction-main"><strong>{details.label}</strong><span>{new Date(transaction.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>{transaction.suspicious && <span className="suspicious-transaction">Suspicious transaction{transaction.suspiciousReason ? ` · ${transaction.suspiciousReason}` : ''}</span>}</div><div className="transaction-summary"><strong className={details.sign === '+' ? 'transaction-credit' : 'transaction-debit'}>{details.sign} {formatMoney(transaction.amount)}</strong><span>{transaction.status === 'SUCCESS' ? 'Completed' : transaction.status}</span></div></li>
+              return <li key={transaction.id} className="transaction-item"><div className="transaction-main"><strong>{details.label}</strong><span>{new Date(transaction.createdAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</span>{transaction.suspicious && <span className="suspicious-transaction">Suspicious transaction{transaction.suspiciousReason ? ` · ${transaction.suspiciousReason}` : ''}</span>}{transaction.type === 'TRANSFER' && <span>{getAiStatus(transaction)}</span>}</div><div className="transaction-summary"><strong className={details.sign === '+' ? 'transaction-credit' : 'transaction-debit'}>{details.sign} {formatMoney(transaction.amount)}</strong><span>{transaction.status === 'SUCCESS' ? 'Completed' : transaction.status}</span></div></li>
             })}
           </ul>}
         </section>

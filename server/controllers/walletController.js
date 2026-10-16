@@ -1,6 +1,7 @@
 const walletService = require('../services/walletService')
 const securityService = require('../services/securityService')
 const fraudService = require('../services/fraudService')
+const aiAnomalyService = require('../services/aiAnomalyService')
 const { isValidPin } = require('./securityController')
 
 const MAX_IDEMPOTENCY_KEY_LENGTH = 100
@@ -26,8 +27,25 @@ function toTransactionResponse(transaction) {
     status: transaction.status,
     suspicious: Boolean(transaction.suspicious),
     suspiciousReason: transaction.suspicious_reason || null,
+    aiAnomalyStatus: transaction.ai_anomaly_status || null,
     idempotencyKey: transaction.idempotency_key,
     createdAt: transaction.created_at,
+  }
+}
+
+async function recordAiAnomalyResult(transaction) {
+  let status = 'UNAVAILABLE'
+  try {
+    status = await aiAnomalyService.predictAnomaly({ amount: transaction.amount })
+  } catch (error) {
+    console.warn('AI anomaly check failed unexpectedly:', error.message)
+  }
+
+  try {
+    await walletService.updateTransactionAiAnomalyStatus(transaction.id, status)
+  } catch (error) {
+    // This happens after the payment commit and must never affect the transfer.
+    console.warn('Unable to save AI anomaly status:', error.message)
   }
 }
 
@@ -163,6 +181,10 @@ async function transfer(req, res) {
       idempotencyKey,
       suspicion,
     })
+
+    // The money movement has committed. Do not await this advisory-only call,
+    // and do not repeat it for an idempotent retry.
+    if (!result.idempotent) void recordAiAnomalyResult(result.transaction)
 
     return res.status(200).json({
       success: true,

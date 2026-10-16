@@ -22,7 +22,7 @@ async function getWalletByUserId(userId) {
 async function getTransactionByIdempotencyKey(connection, idempotencyKey) {
   const [transactions] = await connection.execute(
     `SELECT id, type, sender_wallet_id, receiver_wallet_id, amount, status,
-            suspicious, suspicious_reason, idempotency_key, created_at
+            suspicious, suspicious_reason, ai_anomaly_status, ai_anomaly_checked_at, idempotency_key, created_at
      FROM transactions
      WHERE idempotency_key = ?
      LIMIT 1`,
@@ -35,7 +35,7 @@ async function getTransactionByIdempotencyKey(connection, idempotencyKey) {
 async function getTransactionByIdempotencyKeyForUpdate(connection, idempotencyKey) {
   const [transactions] = await connection.execute(
     `SELECT id, type, sender_wallet_id, receiver_wallet_id, amount, status,
-            suspicious, suspicious_reason, idempotency_key, created_at
+            suspicious, suspicious_reason, ai_anomaly_status, ai_anomaly_checked_at, idempotency_key, created_at
      FROM transactions
      WHERE idempotency_key = ?
      LIMIT 1
@@ -105,7 +105,7 @@ async function depositToWallet({ userId, amount, idempotencyKey }) {
 
     const [transactions] = await connection.execute(
       `SELECT id, type, sender_wallet_id, receiver_wallet_id, amount, status,
-              suspicious, suspicious_reason, idempotency_key, created_at
+              suspicious, suspicious_reason, ai_anomaly_status, ai_anomaly_checked_at, idempotency_key, created_at
        FROM transactions
        WHERE id = ?`,
       [transactionResult.insertId]
@@ -277,7 +277,7 @@ async function transferBetweenWallets({
 
     const [transactions] = await connection.execute(
       `SELECT id, type, sender_wallet_id, receiver_wallet_id, amount, status,
-              suspicious, suspicious_reason, idempotency_key, created_at
+              suspicious, suspicious_reason, ai_anomaly_status, ai_anomaly_checked_at, idempotency_key, created_at
        FROM transactions
        WHERE id = ?`,
       [transactionResult.insertId]
@@ -347,7 +347,7 @@ async function getWalletTransactions(userId) {
 
   const [transactions] = await pool.execute(
     `SELECT id, type, sender_wallet_id, receiver_wallet_id, amount, status,
-            suspicious, suspicious_reason, idempotency_key, created_at
+            suspicious, suspicious_reason, ai_anomaly_status, ai_anomaly_checked_at, idempotency_key, created_at
      FROM transactions
      WHERE sender_wallet_id = ? OR receiver_wallet_id = ?
      ORDER BY created_at DESC, id DESC`,
@@ -357,9 +357,19 @@ async function getWalletTransactions(userId) {
   return transactions
 }
 
+async function updateTransactionAiAnomalyStatus(transactionId, status) {
+  await pool.execute(
+    `UPDATE transactions
+     SET ai_anomaly_status = ?, ai_anomaly_checked_at = NOW()
+     WHERE id = ?`,
+    [status, transactionId]
+  )
+}
+
 module.exports = {
   getWalletByUserId,
   depositToWallet,
   transferBetweenWallets,
   getWalletTransactions,
+  updateTransactionAiAnomalyStatus,
 }

@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   status VARCHAR(20) NOT NULL,
   suspicious BOOLEAN NOT NULL DEFAULT FALSE,
   suspicious_reason VARCHAR(255) NULL,
+  ai_anomaly_status VARCHAR(20) NULL,
+  ai_anomaly_checked_at DATETIME NULL,
   idempotency_key VARCHAR(100) NOT NULL UNIQUE,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT chk_transaction_amount_positive CHECK (amount > 0),

@@ -6,6 +6,7 @@ const { pool } = require('../config/db')
 const securityService = require('../services/securityService')
 const walletService = require('../services/walletService')
 const fraudService = require('../services/fraudService')
+const aiAnomalyService = require('../services/aiAnomalyService')
 const { setPin, getSecurityStatus } = require('../controllers/securityController')
 const { transfer } = require('../controllers/walletController')
 
@@ -225,6 +226,8 @@ test('verifies a correct PIN before continuing a transfer using the JWT user ID'
   const originalCheckDailyTransferLimit = securityService.checkDailyTransferLimit
   const originalTransferBetweenWallets = walletService.transferBetweenWallets
   const originalEvaluateTransfer = fraudService.evaluateTransfer
+  const originalUpdateAiStatus = walletService.updateTransactionAiAnomalyStatus
+  const originalPredictAnomaly = aiAnomalyService.predictAnomaly
   let verifiedArguments
   let dailyLimitArguments
   let transferredArguments
@@ -239,6 +242,8 @@ test('verifies a correct PIN before continuing a transfer using the JWT user ID'
     suspicious: true,
     reason: 'Large transaction amount',
   })
+  aiAnomalyService.predictAnomaly = async () => 'NORMAL'
+  walletService.updateTransactionAiAnomalyStatus = async () => {}
   walletService.transferBetweenWallets = async (arguments_) => {
     transferredArguments = arguments_
     return {
@@ -291,6 +296,8 @@ test('verifies a correct PIN before continuing a transfer using the JWT user ID'
     securityService.checkDailyTransferLimit = originalCheckDailyTransferLimit
     walletService.transferBetweenWallets = originalTransferBetweenWallets
     fraudService.evaluateTransfer = originalEvaluateTransfer
+    walletService.updateTransactionAiAnomalyStatus = originalUpdateAiStatus
+    aiAnomalyService.predictAnomaly = originalPredictAnomaly
   }
 })
 
