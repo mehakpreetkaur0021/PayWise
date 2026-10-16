@@ -247,6 +247,7 @@ test('returns an existing idempotent transfer without wallet updates', async () 
     amount: 1000,
     status: 'SUCCESS',
     idempotency_key: 'transfer-1',
+    sender_user_id: 1,
   }
   const mock = createConnection({ existingTransaction })
 

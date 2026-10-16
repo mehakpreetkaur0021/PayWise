@@ -54,9 +54,82 @@ This is only a small improvement. The model still has poor precision because
 the available features are weak and the source data lacks user/history context.
 It is not suitable for fraud confirmation or payment decisions.
 
+## Precision-threshold experiment
+
+The v2 artifact is preserved. A separate experiment can select the highest
+validation precision among score cutoffs whose validation recall is at least
+40%, without selecting from final-test labels:
+
+```bash
+ai-service/.venv/bin/python ai-service/scripts/evaluate_precision_threshold.py
+```
+
+It saves `artifacts/isolation_forest_precision.joblib` and
+`artifacts/isolation_forest_precision_metrics.json`. Lower `score_samples()`
+values are more anomalous, and both the experiment and API classify a score at
+or below the saved threshold as suspicious.
+
+For the supplied data, the 40% recall target is achievable, but the highest
+validation precision occurs at the existing v2 threshold (`-0.38738396015733517`).
+The final-test result is therefore identical to v2: 3.79% precision, 50.14%
+recall, 7.05% F1, and 48.23% flagged. This is an honest no-improvement result;
+stricter low-alert thresholds reduce both recall and precision on validation.
+
+## Synthetic amount-and-time experiment
+
+`synthetic_transactions_amount_time.csv` is a separate synthetic dataset with
+only `amount`, `hour_of_day`, and `is_fraud`. Train its separate experiment
+with:
+
+```bash
+ai-service/.venv/bin/python ai-service/scripts/train_synthetic_isolation_forest.py
+```
+
+It uses only amount and hour as model inputs; `is_fraud` is excluded from
+fitting and used only to select the validation threshold and evaluate the
+held-out test set. It writes `artifacts/isolation_forest_synthetic.joblib` and
+`artifacts/isolation_forest_synthetic_metrics.json`. The data is synthetic, so
+these results do not establish real-world fraud-detection performance. This
+experiment does not affect the API, which continues to load the V2 artifact.
+
+To compare higher-recall thresholds selected only from the synthetic
+experiment's validation split, run:
+
+```bash
+ai-service/.venv/bin/python ai-service/scripts/evaluate_synthetic_recall_thresholds.py
+```
+
+It preserves the baseline artifacts and writes
+`artifacts/isolation_forest_synthetic_recall_thresholds.joblib` and
+`artifacts/isolation_forest_synthetic_recall_thresholds_metrics.json`. It
+evaluates validation recall targets of 60%, 70%, and 80%; raised recall can
+increase legitimate-transaction alerts, reduce precision, and raise the false
+positive rate. These remain synthetic-data results, not evidence of real-world
+fraud-detection performance.
+
+## Active API model and rollback
+
+By default the API loads `isolation_forest_synthetic_recall_thresholds.joblib`
+using its validated `"60%"` threshold from
+`isolation_forest_synthetic_recall_thresholds_metrics.json`. That model uses
+only `amount` followed by `hour_of_day`; the existing `day_of_week` request
+field remains required for V2 API compatibility and is ignored by this model.
+
+To revert without deleting or changing any artifact, start FastAPI with V2:
+
+```bash
+PAYWISE_AI_MODEL=v2 ai-service/.venv/bin/python -m uvicorn main:app --app-dir ai-service --reload
+```
+
+Set `PAYWISE_AI_MODEL=synthetic_recall_60` (or omit it) to use the default
+synthetic experiment again. The loader verifies that the saved 60% threshold
+and its metrics agree before it serves predictions. Both choices remain
+advisory only; the synthetic result does not demonstrate real-world fraud
+detection accuracy.
+
 ## Run the API
 
-The API loads the trained v2 artifact; it does not retrain:
+The API loads the selected saved artifact; it does not retrain:
 
 ```bash
 ai-service/.venv/bin/python -m uvicorn main:app --app-dir ai-service --reload

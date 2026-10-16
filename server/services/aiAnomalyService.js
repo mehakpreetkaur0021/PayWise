@@ -23,8 +23,9 @@ async function predictAnomaly({ amount, occurredAt = new Date() }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: controller.signal,
-      // Wallet amounts are integer paise. The training data contains decimal
-      // amount values in the small currency-unit range, so send rupee values.
+      // Wallet amounts are integer paise; this established integration sends a
+      // decimal rupee magnitude. The synthetic dataset's currency unit is not
+      // verified, so this is scale alignment only, not a currency assumption.
       body: JSON.stringify({ amount: amount / PAISE_PER_RUPEE, ...utcFeatures(occurredAt) }),
     })
 

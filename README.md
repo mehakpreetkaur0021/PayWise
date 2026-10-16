@@ -100,6 +100,7 @@ Copy `server/.env.example` to `server/.env` and configure your local values. Nev
 | `DB_NAME` | MySQL database name |
 | `JWT_SECRET` | Private key used to sign authentication tokens |
 | `AI_SERVICE_URL` | Python AI service URL, normally `http://127.0.0.1:8000` |
+| `PAYWISE_AI_MODEL` | FastAPI process setting: `synthetic_recall_60` by default, or `v2` to roll back |
 
 ## Running Locally
 
@@ -135,13 +136,21 @@ ai-service/.venv/bin/python -m uvicorn main:app --app-dir ai-service --reload
 
 The service health endpoint is available at `http://127.0.0.1:8000/health`.
 
-The backend uses `AI_SERVICE_URL` to communicate with the AI service. The AI service can be unavailable without changing the outcome of a successfully committed transfer.
+The backend uses `AI_SERVICE_URL` to communicate with the AI service. The AI
+check runs only after a successful transfer has committed. It is advisory-only:
+an unavailable service, timeout, or failed result cannot change, delay, reject,
+or roll back a transfer.
 
 ## Experimental AI Anomaly Detection
 
 PayWise uses **Isolation Forest**, an unsupervised machine learning algorithm, to identify transactions that appear unusual based on their features.
 
-The current v2 model uses:
+The FastAPI default is the separate synthetic 60%-validation-recall experiment.
+It uses amount and hour-of-day only; `day_of_week` remains in the request for
+wire compatibility but is ignored. Set `PAYWISE_AI_MODEL=v2` when starting the
+FastAPI process to restore the existing V2 artifact without deleting anything.
+
+V2 uses:
 
 - Transaction amount
 - One-hot-encoded hour of the day
@@ -162,7 +171,10 @@ The following results were measured on the held-out test set:
 
 Version 2 produced a small improvement in precision, recall, and F1-score. However, precision remains very low, and the model flags nearly half of the evaluated transactions.
 
-**These results demonstrate an experimental prototype, not production-ready fraud detection.** Many flagged transactions are legitimate according to the dataset labels.
+The active synthetic experiment was selected on validation data and has only
+synthetic held-out measurements. **Neither result demonstrates production-ready
+or real-world fraud-detection accuracy.** Many flagged transactions can be
+legitimate according to the dataset labels.
 
 ### Limitations and Future Improvements
 

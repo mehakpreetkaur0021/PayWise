@@ -34,10 +34,12 @@ async function getTransactionByIdempotencyKey(connection, idempotencyKey) {
 
 async function getTransactionByIdempotencyKeyForUpdate(connection, idempotencyKey) {
   const [transactions] = await connection.execute(
-    `SELECT id, type, sender_wallet_id, receiver_wallet_id, amount, status,
-            suspicious, suspicious_reason, ai_anomaly_status, ai_anomaly_checked_at, idempotency_key, created_at
+    `SELECT transactions.id, transactions.type, transactions.sender_wallet_id, transactions.receiver_wallet_id, transactions.amount, transactions.status,
+            transactions.suspicious, transactions.suspicious_reason, transactions.ai_anomaly_status, transactions.ai_anomaly_checked_at, transactions.idempotency_key, transactions.created_at,
+            sender_wallet.user_id AS sender_user_id
      FROM transactions
-     WHERE idempotency_key = ?
+     LEFT JOIN wallets AS sender_wallet ON sender_wallet.id = transactions.sender_wallet_id
+     WHERE transactions.idempotency_key = ?
      LIMIT 1
      FOR UPDATE`,
     [idempotencyKey]
@@ -175,6 +177,11 @@ async function transferBetweenWallets({
     )
 
     if (existingTransaction) {
+      // Idempotency keys are globally unique. Never disclose or replay an
+      // unrelated user's transaction if a client guesses or reuses their key.
+      if (Number(existingTransaction.sender_user_id) !== Number(senderUserId)) {
+        throw createServiceError('Idempotency key is already in use', 409)
+      }
       await connection.commit()
       transactionStarted = false
 
@@ -323,7 +330,14 @@ async function transferBetweenWallets({
         idempotencyKey
       )
 
-      if (existingTransaction) {
+      if (existingTransaction && existingTransaction.sender_wallet_id) {
+        const [owners] = await connection.execute(
+          'SELECT user_id FROM wallets WHERE id = ? LIMIT 1',
+          [existingTransaction.sender_wallet_id]
+        )
+        if (!owners[0] || Number(owners[0].user_id) !== Number(senderUserId)) {
+          throw createServiceError('Idempotency key is already in use', 409)
+        }
         return {
           transaction: existingTransaction,
           wallet: await getWalletByUserId(senderUserId),

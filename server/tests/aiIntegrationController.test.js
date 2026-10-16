@@ -39,7 +39,7 @@ test('saves an advisory AI anomaly result after a successful transfer without ch
     securityService.checkDailyTransferLimit = async () => {}
     fraudService.evaluateTransfer = async () => ({ suspicious: false, reason: null })
     walletService.transferBetweenWallets = async () => successfulTransferResult()
-    aiAnomalyService.predictAnomaly = async ({ amount }) => { assert.equal(amount, 1000); return 'SUSPICIOUS' }
+    aiAnomalyService.predictAnomaly = async ({ amount }) => { assert.equal(amount, 1000); return 'NORMAL' }
     walletService.updateTransactionAiAnomalyStatus = async (id, status) => { saved = { id, status } }
 
     const response = createResponse()
@@ -47,7 +47,7 @@ test('saves an advisory AI anomaly result after a successful transfer without ch
     assert.equal(response.statusCode, 200)
     assert.equal(response.body.transaction.status, 'SUCCESS')
     await new Promise((resolve) => setImmediate(resolve))
-    assert.deepEqual(saved, { id: 20, status: 'SUSPICIOUS' })
+    assert.deepEqual(saved, { id: 20, status: 'NORMAL' })
   } finally {
     securityService.verifyTransactionPin = originals.verify
     securityService.checkDailyTransferLimit = originals.daily

@@ -36,3 +36,17 @@ test('maps normal predictions and records AI failures as unavailable', async () 
     global.fetch = originalFetch
   }
 })
+
+test('maps an aborted AI request to unavailable without changing request units', async () => {
+  const originalFetch = global.fetch
+  try {
+    global.fetch = async () => {
+      const error = new Error('aborted')
+      error.name = 'AbortError'
+      throw error
+    }
+    assert.equal(await aiAnomalyService.predictAnomaly({ amount: 1234 }), 'UNAVAILABLE')
+  } finally {
+    global.fetch = originalFetch
+  }
+})

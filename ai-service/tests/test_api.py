@@ -13,8 +13,10 @@ import main
 class FakePipeline:
     def __init__(self, score):
         self.score = score
+        self.received_features = []
 
     def score_samples(self, features):
+        self.received_features.append(features)
         return [self.score]
 
 
@@ -24,7 +26,8 @@ class ApiTests(unittest.TestCase):
         self.client = TestClient(self.app)
 
     def set_fake_score(self, score):
-        self.app.state.model_service.pipeline = FakePipeline(score)
+        self.fake_pipeline = FakePipeline(score)
+        self.app.state.model_service.pipeline = self.fake_pipeline
         self.app.state.model_service.threshold = -0.5
 
     def test_health_reports_loaded_model(self):
@@ -34,13 +37,32 @@ class ApiTests(unittest.TestCase):
 
     def test_prediction_mapping_and_response_structure(self):
         payload = {"amount": 100.0, "hour_of_day": 10, "day_of_week": 0}
-        for score, expected_prediction, expected_anomaly in [(-0.6, "suspicious", True), (-0.4, "normal", False)]:
+        for score, expected_prediction, expected_anomaly in [(-0.6, "suspicious", True), (-0.5, "suspicious", True), (-0.4, "normal", False)]:
             self.set_fake_score(score)
             response = self.client.post("/predict", json=payload)
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["prediction"], expected_prediction)
             self.assertEqual(response.json()["is_anomaly"], expected_anomaly)
             self.assertIn("not confirmation of fraud", response.json()["message"])
+
+    def test_default_synthetic_model_uses_exact_two_feature_order(self):
+        self.assertEqual(self.app.state.model_service.model_selection, "synthetic_recall_60")
+        self.assertEqual(self.app.state.model_service.feature_columns, ("amount", "hour_of_day"))
+        self.set_fake_score(-0.5)
+        response = self.client.post("/predict", json={"amount": 12.5, "hour_of_day": 9, "day_of_week": 6})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.fake_pipeline.received_features, [[[12.5, 9]]])
+
+    def test_synthetic_artifact_uses_validated_60_percent_threshold(self):
+        service = main.ModelService(model_selection="synthetic_recall_60")
+        self.assertTrue(service.available)
+        self.assertEqual(service.feature_columns, ("amount", "hour_of_day"))
+        self.assertAlmostEqual(service.threshold, -0.4273184861679343)
+
+    def test_v2_selection_remains_available(self):
+        service = main.ModelService(model_selection="v2")
+        self.assertTrue(service.available)
+        self.assertEqual(service.feature_columns, ("amount", "hour_of_day", "day_of_week"))
 
     def test_missing_and_invalid_values_return_4xx(self):
         for payload in ({"amount": 1, "hour_of_day": 1}, {"amount": -1, "hour_of_day": 1, "day_of_week": 1}, {"amount": "not-a-number", "hour_of_day": 1, "day_of_week": 1}):
@@ -61,3 +83,14 @@ class ApiTests(unittest.TestCase):
             response = client.post("/predict", json={"amount": 1, "hour_of_day": 1, "day_of_week": 1})
             self.assertEqual(response.status_code, 503)
             self.assertEqual(response.json(), {"detail": "Anomaly model is unavailable."})
+
+    def test_scoring_error_is_controlled(self):
+        class BrokenPipeline:
+            def score_samples(self, _):
+                raise RuntimeError("model error")
+
+        self.app.state.model_service.pipeline = BrokenPipeline()
+        self.app.state.model_service.threshold = -0.5
+        response = self.client.post("/predict", json={"amount": 1, "hour_of_day": 1, "day_of_week": 1})
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json(), {"detail": "Anomaly model is unavailable."})
